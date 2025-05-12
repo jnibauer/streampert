@@ -1,0 +1,6 @@
+Metadata-Version: 2.1
+Name: streampert
+Version: 0.1.0
+Summary: A short description of your package.
+Author: Your Name
+Requires-Python: >=3.7
