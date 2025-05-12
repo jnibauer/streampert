@@ -106,11 +106,11 @@ def find_idx_from_mass(masses: jnp.array, r_s_values: jnp.array, key: jax.random
     - Intended for use in batched simulations or derivative sampling workflows.
     """
     keys = jax.random.split(key, 2)
-    masses = jax.random.permutation(key=keys[0], x=masses)
+    ##masses = jax.random.permutation(key=keys[0], x=masses) used to do this but now we will not
     # Added noise to concentration to select for different orbits randomly. We wiill
     # correct for differences from input scale-radius using perturbation theory
-    concentration_noise = jax.random.uniform(keys[1], minval=0.8, maxval=1.8, shape=(len(masses),))
-    expected_r_s = 1.05 * jnp.sqrt(masses / 1e8) * concentration_fac * concentration_noise
+    #concentration_noise = jax.random.uniform(keys[1], minval=0.95, maxval=1.05, shape=(len(masses),))
+    expected_r_s = 1.05 * jnp.sqrt(masses / 1e8) * concentration_fac #* concentration_noise
     N, M = expected_r_s.shape[0], r_s_values.shape[0]
 
     # Compute pairwise distances (N x M)
