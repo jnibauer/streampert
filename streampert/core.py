@@ -24,7 +24,7 @@ from streamsculptor import perturbative as pert
 
 
 @jax.jit
-def compute_binned_dispersion(phi1_bins, phi1, drv):
+def compute_binned_dispersion(phi1_bins: jnp.array, phi1: jnp.array, drv: jnp.array, model_mask: jnp.array):
     """
     Compute the standard deviation (dispersion) of `drv` values within each bin defined by `phi1_bins`.
 
@@ -41,6 +41,8 @@ def compute_binned_dispersion(phi1_bins, phi1, drv):
         Array of `phi1` values to be binned. Must be the same shape as `drv`.
     drv : array_like
         Data values for which to compute dispersion. Must be the same shape as `phi1`.
+    model_mask : array_like
+        Boolean mask array of the same shape as `phi1` and `drv`. Only values where mask is True are considered.
 
     Returns
     -------
@@ -57,7 +59,7 @@ def compute_binned_dispersion(phi1_bins, phi1, drv):
     bin_indices = jnp.digitize(phi1, phi1_bins) - 1  # bins are 0-indexed
     num_bins = len(phi1_bins) - 1
     def compute_for_bin(i):
-        mask = bin_indices == i
+        mask = (bin_indices == i) & model_mask 
         count = jnp.sum(mask)
         mean = jnp.sum(drv * mask) / count
         sq_diff = (drv - mean) ** 2 * mask
