@@ -113,7 +113,6 @@ def find_idx_from_mass(masses: jnp.array, r_s_values: jnp.array, key: jax.random
     # correct for differences from input scale-radius using perturbation theory
     #concentration_noise = jax.random.uniform(keys[1], minval=0.95, maxval=1.05, shape=(len(masses),))
     # sort masses in descending order from largest to smallest
-    masses = masses.at[jnp.argsort(-masses)].get()
     expected_r_s = 1.05 * jnp.sqrt(masses / 1e8) * concentration_fac #* concentration_noise
     N, M = expected_r_s.shape[0], r_s_values.shape[0]
 
@@ -180,9 +179,7 @@ def find_idx_from_mass_binned(
     - If a bin runs out of available values, uniform sampling is used among original bin members.
     - The function is compiled with `jax.jit` and treats `num_bins` as a static argument.
     """
-    # Sort masses in descending order
-    masses = masses.at[jnp.argsort(-masses)].get()
-    
+
     # Expected scale radii calculation
     expected_r_s = 1.05 * jnp.sqrt(masses / 1e8) * concentration_fac
 
@@ -293,6 +290,8 @@ def gen_stream_realization(unpert: jnp.ndarray,
     scale-radius _before_ applying `concentraction_fac` and uses these to compute the perturbed stream 
     via the input derivatives.
     """
+    # Sort masses in descending order
+    m_arr = m_arr.at[jnp.argsort(-m_arr)].get()
     def use_bined():
         # Find indices based on mass and scale radius
         idx_take = find_idx_from_mass_binned(masses=m_arr, 
