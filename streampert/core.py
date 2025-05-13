@@ -180,6 +180,9 @@ def find_idx_from_mass_binned(
     - If a bin runs out of available values, uniform sampling is used among original bin members.
     - The function is compiled with `jax.jit` and treats `num_bins` as a static argument.
     """
+    # Sort masses in descending order
+    masses = masses.at[jnp.argsort(-masses)].get()
+    
     # Expected scale radii calculation
     expected_r_s = 1.05 * jnp.sqrt(masses / 1e8) * concentration_fac
 
