@@ -22,6 +22,8 @@ from streamsculptor import JaxCoords as jc
 
 from streamsculptor import perturbative as pert
 
+from functools import partial
+
 
 @jax.jit
 def compute_binned_dispersion(phi1_bins: jnp.array, phi1: jnp.array, drv: jnp.array, model_mask: jnp.array):
@@ -133,15 +135,124 @@ def find_idx_from_mass(masses: jnp.array, r_s_values: jnp.array, key: jax.random
 
     _, _, result = jax.lax.fori_loop(0, N, body_fun, (dists, used, result))
     return result
+
+
+@partial(jax.jit, static_argnames=["num_bins"])
+def find_idx_from_mass_binned(
+    masses: jnp.ndarray,
+    r_s_values: jnp.ndarray,
+    key: jax.random.PRNGKey,
+    concentration_fac: float = 1.0,
+    num_bins: int = 20,
+    ):
+    """
+    Assign indices from `r_s_values` to each mass based on binned expected scale radii.
+
+    This function computes expected scale radii from input masses and bins both the expected
+    and actual `r_s_values` into logarithmic bins. For each mass, it randomly selects an index
+    from `r_s_values` that falls within the corresponding bin, ensuring no repeated selection.
+    When no unused values are left in the bin, it samples uniformly from all original entries
+    in that bin.
+
+    Parameters
+    ----------
+    masses : jnp.ndarray
+        Array of halo masses. Shape: (N,)
+    r_s_values : jnp.ndarray
+        Array of scale radius values to sample from. Shape: (M,)
+    key : jax.random.PRNGKey
+        JAX PRNG key used for stochastic operations.
+    concentration_fac : float, optional
+        Multiplicative factor to scale the expected radius values. Default is 1.0.
+    num_bins : int, optional
+        Number of logarithmic bins to use for binning `r_s_values`. Default is 20.
+
+    Returns
+    -------
+    jnp.ndarray
+        Array of indices into `r_s_values`, one per input mass. Shape: (N,)
+
+    Notes
+    -----
+    - Each index corresponds to a value in `r_s_values` that is binned similarly to the
+      expected scale radius of the corresponding mass.
+    - Once an index from `r_s_values` is selected, it cannot be selected again.
+    - If a bin runs out of available values, uniform sampling is used among original bin members.
+    - The function is compiled with `jax.jit` and treats `num_bins` as a static argument.
+    """
+    # Expected scale radii calculation
+    expected_r_s = 1.05 * jnp.sqrt(masses / 1e8) * concentration_fac
+
+    # Bin edges and assignment
+    r_s_min, r_s_max = r_s_values.min(), r_s_values.max()
+    bin_edges = 10**jnp.linspace(jnp.log10(r_s_min), jnp.log10(r_s_max), num_bins + 1)
+    r_s_bins = jnp.digitize(r_s_values, bin_edges) - 1
+    expected_bins = jnp.digitize(expected_r_s, bin_edges) - 1
+    expected_bins = jnp.clip(expected_bins, 0, num_bins - 1)
+
+    # Initialize the random key for each mass
+    keys = jax.random.split(key, masses.shape[0])
+
+    # Initialize the 'used' mask to keep track of already selected indices
+    used = jnp.zeros(r_s_values.shape[0], dtype=jnp.bool_)
+
+    def body_fn(i, carry):
+        result, used, keys = carry
+
+        # Get the bin corresponding to the current mass
+        bin_id = expected_bins[i]
+
+        # Mask for the current bin
+        bin_mask_orig = (r_s_bins == bin_id).astype(jnp.float32)
+
+        # Set probabilities to zero for already used indices
+        bin_mask = jnp.where(used, 0.0, bin_mask_orig)
+
+        # Normalize to get a valid probability distribution
+        total = bin_mask.sum()
+        probs = jnp.where(bin_mask > 0, bin_mask / total, 0.0)
+
+        # check if there are unused derivs left
+        pred = jnp.sum(probs) > 0
+
+        def no_prob():
+            # If no derivs left, randomly sample in the bin
+            return jnp.where(bin_mask_orig > 0, 1./bin_mask_orig.sum(), 0.0)
+        def yes_prob():
+            # If derivs left, use the calculated probabilities
+            return probs
+        
+        probs = jax.lax.cond(pred, yes_prob, no_prob)
+
+        # Select an index from r_s_values based on the probability distribution
+        idx = jax.random.choice(keys[i], r_s_values.shape[0], p=probs)
+
+        # Update the 'used' mask to mark the selected index
+        used = used.at[idx].set(True)
+
+        # Store the selected index in the result array
+        result = result.at[i].set(idx)
+
+        return result, used, keys
+
+    # Initialize the result array to store the indices
+    init_result = jnp.full((masses.shape[0],), -1)
+
+    # Perform the loop over all masses
+    result, _, _ = jax.lax.fori_loop(0, masses.shape[0], body_fn, (init_result, used, keys))
+
+    return result
     
 
-@jax.jit
+@partial(jax.jit, static_argnames=["use_binned_idx_finder", "num_bins"])
 def gen_stream_realization(unpert: jnp.ndarray, 
                            derivs: jnp.ndarray, 
                            r_s_root: jnp.ndarray, 
                            m_arr: jnp.ndarray, 
                            key: jax.random.PRNGKey, 
-                           concentration_fac = 1.0):
+                           concentration_fac = 1.0,
+                           use_binned_idx_finder = False,
+                           num_bins : int = 20):
     """
     Generates a realization of a perturbed stream given a mass realization and a set of root scale-radii
     for the derivatives. Adjusting `concentration_fac` will not adjust the orbits.
@@ -160,6 +271,10 @@ def gen_stream_realization(unpert: jnp.ndarray,
         PRNG key used for random number generation.
     concentration_fac : float, optional
         Adjustment factor for the concentration of the root scale-radius. Default is 1.0.
+    use_binned_idx_finder : bool, optional
+        If True, use a binned index finder for selecting scale-radii. Default is False.
+    num_bins : int, optional
+        Number of bins to use if `use_binned_idx_finder` is True. Default is 20.
 
     Returns
     -------
@@ -175,7 +290,21 @@ def gen_stream_realization(unpert: jnp.ndarray,
     scale-radius _before_ applying `concentraction_fac` and uses these to compute the perturbed stream 
     via the input derivatives.
     """
-    idx_take = find_idx_from_mass(m_arr, r_s_root, key, 1.0)
+    def use_bined():
+        # Find indices based on mass and scale radius
+        idx_take = find_idx_from_mass_binned(masses=m_arr, 
+                                            r_s_values=r_s_root, 
+                                            key=key, 
+                                            concentration_fac=concentration_fac, 
+                                            num_bins=num_bins)
+        return idx_take
+
+    def not_binned():
+        # Find indices based on mass and scale radius
+        idx_take = find_idx_from_mass(m_arr, r_s_root, key, concentration_fac)
+        return idx_take
+
+    idx_take = jax.lax.cond(use_binned_idx_finder, use_bined, not_binned)
     
     r_s_vals = r_s_root.at[idx_take].get()
     expected_r_s = 1.05 * jnp.sqrt(m_arr / 1e8) * concentration_fac
