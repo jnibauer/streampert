@@ -1,6 +1,7 @@
 README.md
 setup.py
 streampert/__init__.py
+streampert/analysis.py
 streampert/core.py
 streampert.egg-info/PKG-INFO
 streampert.egg-info/SOURCES.txt
