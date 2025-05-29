@@ -218,7 +218,7 @@ def run_inference(
         Warning: must specify phi1_bins_jax and rv_spl and mask_func outside of this function
                 as global variables.
         """
-        keys = jax.random.split(key,3)
+        keys = jax.random.split(key,2)
         samps = ratecalc.sample_masses(log10M_min=log10M_min,
                                 log10M_max=log10M_max,
                                 key=keys[0],

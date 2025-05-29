@@ -71,6 +71,50 @@ def compute_binned_dispersion(phi1_bins: jnp.array, phi1: jnp.array, drv: jnp.ar
     return jax.vmap(compute_for_bin)(jnp.arange(num_bins))
 
 
+@jax.jit
+def compute_binned_mean(phi1_bins: jnp.array, phi1: jnp.array, values: jnp.array, model_mask: jnp.array):
+    """
+    Compute the standard deviation (dispersion) of `drv` values within each bin defined by `phi1_bins`.
+
+    For each bin, this function computes the sample standard deviation of the `drv` values whose corresponding
+    `phi1` values fall into that bin. Bins are defined by `phi1_bins`, and the result is computed using 
+    vectorized mapping with `jax.vmap`.
+
+    Parameters
+    ----------
+    phi1_bins : array_like
+        Array of bin edges. Must be 1-dimensional and sorted in ascending order.
+        The number of bins is `len(phi1_bins) - 1`.
+    phi1 : array_like
+        Array of `phi1` values to be binned. Must be the same shape as `values`.
+    values : array_like
+        Data values for which to compute dispersion. Must be the same shape as `phi1`.
+    model_mask : array_like
+        Boolean mask array of the same shape as `phi1` and `drv`. Only values where mask is True are considered.
+
+    Returns
+    -------
+    means : ndarray
+        Array of means (one per bin). If a bin has fewer than 2 entries,
+        its value is `NaN`.
+    counts : ndarray
+        Number of elements in each bin.
+
+    Notes
+    -----
+    This function is JIT-compiled with `jax.jit` and uses `jax.vmap` to parallelize over bins.
+    """
+    bin_indices = jnp.digitize(phi1, phi1_bins) - 1  # bins are 0-indexed
+    num_bins = len(phi1_bins) - 1
+    def compute_for_bin(i):
+        mask = (bin_indices == i) & model_mask 
+        count = jnp.sum(mask)
+        mean = jnp.sum(values * mask) / count
+        return jnp.where(count > 1, mean, jnp.nan), count
+    
+    return jax.vmap(compute_for_bin)(jnp.arange(num_bins))
+
+
 
 @jax.jit
 def find_idx_from_mass(masses: jnp.array, r_s_values: jnp.array, key: jax.random.PRNGKey, concentration_fac = 1.0,):
