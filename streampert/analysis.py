@@ -164,7 +164,7 @@ def run_inference(
     inside = ( phi1_u>phi1_min_length ) & (phi1_u < phi1_max_length)
 
     # Compute unperturbed rv track
-    _,_, rv_unpert = jax.vmap(jc.simvel_to_ICRS)(unpert[:,:3], unpert[:,3:])
+    _,_, rv_unpert = jax.vmap(jc.simvel_to_ICRS_GSR)(unpert[:,:3], unpert[:,3:])
     bins_left =   jnp.linspace(-110,-25,40)
     bins_right = jnp.linspace(-16,40,40)
 
