@@ -116,6 +116,8 @@ def compute_binned_mean(phi1_bins: jnp.array, phi1: jnp.array, values: jnp.array
 
 
 
+
+
 @jax.jit
 def find_idx_from_mass(masses: jnp.array, r_s_values: jnp.array, key: jax.random.PRNGKey, concentration_fac = 1.0,):
     """
@@ -363,6 +365,7 @@ def gen_stream_realization(unpert: jnp.ndarray,
     drs_arr = drs[None,:,None]
     
     derivs = jnp.sum( derivs_m * m_arr, axis=1) + jnp.sum(derivs_rs * m_arr * drs_arr, axis=1)
+    derivs = jnp.where(jnp.isnan(derivs), 0.0, derivs)
     slin = unpert + derivs
     return slin, idx_take
 
