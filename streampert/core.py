@@ -369,10 +369,79 @@ def gen_stream_realization(unpert: jnp.ndarray,
     slin = unpert + derivs
     return slin, idx_take
 
+ 
 
+@partial(jax.jit, static_argnames=["use_binned_idx_finder", "num_bins"])
+def gen_stream_realization_flexible_conc(unpert: jnp.ndarray, 
+                           derivs: jnp.ndarray, 
+                           r_s_root: jnp.ndarray, 
+                           m_arr: jnp.ndarray, 
+                           key: jax.random.PRNGKey, 
+                           concentration_fac:  jnp.ndarray,
+                           num_bins : int = 20):
+    """
+    Generates a realization of a perturbed stream given a mass realization and a set of root scale-radii
+    for the derivatives. Adjusting `concentration_fac` will not adjust the orbits.
 
+    Parameters
+    ----------
+    unpert : jnp.ndarray
+        Array representing the unperturbed stream.
+    derivs : jnp.ndarray
+        Array of derivatives used to compute the perturbations.
+    r_s_root : jnp.ndarray
+        Root scale-radii for the derivatives, which serve as a reference for the perturbations.
+    m_arr : jnp.ndarray
+        Array of masses used to calculate the stream realization.
+    key : jax.random.PRNGKey
+        PRNG key used for random number generation.
+    concentration_fac : jnp.ndarray
+        Adjustment factor for the concentration of the root scale-radius. Must be same length as m_arr
+    use_binned_idx_finder : bool, optional
+        If True, use a binned index finder for selecting scale-radii. Default is False.
+    num_bins : int, optional
+        Number of bins to use if `use_binned_idx_finder` is True. Default is 20.
 
+    Returns
+    -------
+    slin : jnp.ndarray
+        Perturbed stream realization.
+    idx_take : jnp.ndarray
+        Indices used to select elements from the `r_s_root` and derivatives arrays.
 
+    Notes
+    -----
+    The function computes the perturbations by selecting scale-radii (`r_s_vals`) based on the mass 
+    realization and the `concentration_fac`. It calculates the deviations (`drs`) from the expected 
+    scale-radius _before_ applying `concentraction_fac` and uses these to compute the perturbed stream 
+    via the input derivatives.
+    """
+    # Sort masses in descending order
+    resort_inds = jnp.argsort(-m_arr)
+    m_arr = m_arr.at[resort_inds].get()
+    concentration_fac = concentration_fac.at[resort_inds].get()
 
+    # Find indices based on mass and scale radius
+    idx_take = find_idx_from_mass_binned(masses=m_arr, 
+                                        r_s_values=r_s_root, 
+                                        key=key, 
+                                        concentration_fac=concentration_fac, 
+                                        num_bins=num_bins)
+  
+    
+    r_s_vals = r_s_root.at[idx_take].get()
+    expected_r_s = 1.05 * jnp.sqrt(m_arr / 1e8) * concentration_fac
+    drs = expected_r_s - r_s_vals
+  
+    derivs_m = derivs.at[:,idx_take,:6].get()
+    derivs_rs = derivs.at[:,idx_take,6:].get()
+    
+    m_arr =  m_arr[None,:,None]
+    drs_arr = drs[None,:,None]
+    
+    derivs = jnp.sum( derivs_m * m_arr, axis=1) + jnp.sum(derivs_rs * m_arr * drs_arr, axis=1)
+    derivs = jnp.where(jnp.isnan(derivs), 0.0, derivs)
+    slin = unpert + derivs
+    return slin, idx_take
 
 
