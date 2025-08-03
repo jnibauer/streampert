@@ -371,7 +371,7 @@ def gen_stream_realization(unpert: jnp.ndarray,
 
  
 
-@partial(jax.jit, static_argnames=["use_binned_idx_finder", "num_bins"])
+@partial(jax.jit, static_argnames=["num_bins"])
 def gen_stream_realization_flexible_conc(unpert: jnp.ndarray, 
                            derivs: jnp.ndarray, 
                            r_s_root: jnp.ndarray, 
